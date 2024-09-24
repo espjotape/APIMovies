@@ -1,57 +1,93 @@
-const knex = require("../database/knex")
+const knex = require("../database/knex");
 
 class NotesController {
   async create(request, response) {
-    const { title, description, rating, tags } = request.body
-    const user_id  = request.user.id
+    const { title, description, rating, tags } = request.body;
+    const user_id = request.user.id;  // Correto: request.user.id
 
-    const [ note_id ] = await knex("notes").insert({
+    const [note_id] = await knex("notes").insert({
       title,
       description,
       user_id,
-      rating
-    })
+      rating,
+    });
 
-    const tagsInsert = tags.map(name => {
+    const tagsInsert = tags.map((name) => {
       return {
         note_id,
         name,
-        user_id
-      }
-    })
+        user_id,
+      };
+    });
 
-    await knex("tags").insert(tagsInsert)
-    response.json()
+    await knex("tags").insert(tagsInsert);
+    response.json();
   }
-  async show(request, response) {
-    const { id } = request.params
 
-    const note = await knex("notes").where({ id }).first()
-    const tags = await knex("tags").where({ note_id: id }).orderBy("name")
-    
+  async update(request, response) {
+    const user_id = request.user.id;
+    const { id } = request.params; // id da nota que estamos atualizando
+    const { title, description, rating, tags } = request.body;
+  
+    // Atualiza os dados da nota
+    await knex("notes").where({ id }).update({
+      title,
+      description,
+      rating,
+      user_id
+    });
+  
+    if (tags) {
+      // Deleta as tags antigas associadas à nota
+      await knex("tags").where({ note_id: id }).delete();
+  
+      // Adiciona as novas tags
+      const tagsInsert = tags.map((name) => {
+        return {
+          note_id: id, // Aqui usamos o id da nota que está sendo atualizada
+          name,
+          user_id
+        };
+      });
+  
+      await knex("tags").insert(tagsInsert);
+    }
+  
+    return response.status(201).json({
+      status: 201,
+      message: "A nota foi atualizada com sucesso.",
+    });
+  }
+  
+
+  async show(request, response) {
+    const { id } = request.params;
+
+    const note = await knex("notes").where({ id }).first();
+    const tags = await knex("tags").where({ note_id: id }).orderBy("name");
 
     return response.json({
       ...note,
-      tags
- 
-    })
+      tags,
+    });
   }
+
   async delete(request, response) {
-    const { id } = request.params
+    const { id } = request.params;
 
-    await knex("notes").where({ id }).delete()
+    await knex("notes").where({ id }).delete();
 
-    return response.json()
+    return response.json();
   }
 
   async index(request, response) {
-    const { title, tags } = request.query
-    const user_id = request.user_id
+    const { title, tags } = request.query;
+    const user_id = request.user.id;  // Corrigido para request.user.id
 
-    let notes
+    let notes;
 
     if (tags) {
-      const filterTags = tags.split(',').map(tag => tag.trim())
+      const filterTags = tags.split(',').map(tag => tag.trim());
 
       notes = await knex("tags")
         .select([
@@ -63,29 +99,27 @@ class NotesController {
         .whereLike("notes.title", `%${title}%`)
         .whereIn("name", filterTags)
         .innerJoin("notes", "notes.id", "tags.note_id")
-        .orderBy("notes.title")
-        
+        .groupBy("note.id")
+        .orderBy("notes.title");
     } else {
       notes = await knex("notes")
-      .where({ user_id })
-      .whereLike("title", `%${title}%`)
-      .orderBy("title")
+        .where({ user_id })
+        .whereLike("title", `%${title}%`)
+        .orderBy("title");
     }
 
-    const userTags = await knex("tags").where({ user_id })
-    const notesWhithTags = notes.map(note => {
-      const noteTags = userTags.filter(tag => tag.note_id === note.id)
+    const userTags = await knex("tags").where({ user_id });
+    const notesWithTags = notes.map((note) => {
+      const noteTags = userTags.filter((tag) => tag.note_id === note.id);
 
       return {
         ...note,
-        tags: noteTags
-      }
-    })
+        tags: noteTags,
+      };
+    });
 
-    return response.json(notesWhithTags)
+    return response.json(notesWithTags);
   }
-
-  
 }
 
-module.exports = NotesController
+module.exports = NotesController;
